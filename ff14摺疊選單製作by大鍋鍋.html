@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FF14 快速鍵選單系統 by大鍋鍋 (最終修正版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: "Microsoft JhengHei", "Segoe UI", sans-serif; background-color: #0f172a; color: #cbd5e1; }
+        
+        /* 面板樣式 */
+        .panel { background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .panel-title { font-size: 1.1rem; font-weight: 700; color: #60a5fa; border-bottom: 1px solid #334155; padding-bottom: 0.5rem; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; }
+        
+        /* 輸入元件 */
+        label { display: block; margin-bottom: 0.3rem; font-size: 0.85rem; color: #94a3b8; }
+        select, input[type="number"] { background-color: #0f172a; border: 1px solid #475569; color: white; padding: 0.5rem; border-radius: 0.25rem; width: 100%; transition: all 0.2s; font-size: 0.9rem; }
+        select:focus, input:focus { border-color: #3b82f6; outline: none; ring: 2px solid rgba(59, 130, 246, 0.5); }
+        
+        /* Checkbox */
+        .cb-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 0.5rem; }
+        .cb-item { background: #334155; padding: 0.5rem; border-radius: 4px; text-align: center; cursor: pointer; font-size: 0.8rem; border: 1px solid transparent; transition: 0.2s; }
+        .cb-item:hover { background: #475569; }
+        .cb-item.active { background: #2563eb; color: white; border-color: #60a5fa; font-weight: bold; }
+
+        /* 設定卡片 */
+        .spoke-card { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 12px; margin-bottom: 12px; position: relative; }
+        .spoke-label { position: absolute; top: -10px; left: 10px; background: #1e293b; padding: 0 8px; font-size: 0.8rem; color: #60a5fa; font-weight: bold; border: 1px solid #334155; border-radius: 4px; }
+
+        /* 視覺化格子 */
+        .bar-container { margin-bottom: 1rem; }
+        .bar-label { font-size: 0.75rem; color: #fbbf24; margin-bottom: 2px; display: flex; justify-content: space-between; }
+        .slots-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; background: rgba(0,0,0,0.3); padding: 4px; border-radius: 4px; border: 1px solid #475569; }
+        
+        .slot { 
+            aspect-ratio: 1; background: #1e293b; border: 1px solid #334155; border-radius: 2px; 
+            display: flex; align-items: center; justify-content: center; 
+            font-size: 0.6rem; position: relative; color: #64748b; cursor: default;
+        }
+        
+        .slot.trigger { background: #059669; color: white; border-color: #34d399; font-weight: bold; cursor: pointer; }
+        .slot.close { background: #dc2626; color: white; border-color: #f87171; font-weight: bold; cursor: pointer; }
+        .slot.content { background: #2563eb; border-color: #60a5fa; color: white; opacity: 0.8; }
+        .slot.reset { background: #475569; border-color: #64748b; color: #94a3b8; border-style: dashed; }
+        
+        /* 巨集文字框 */
+        textarea.macro { display: block; background: #020617; color: #4ade80; font-family: Consolas, monospace; width: 100%; height: 130px; padding: 0.75rem; border-radius: 0.375rem; border: 1px solid #334155; resize: none; font-size: 0.85rem; line-height: 1.4; margin-bottom: 5px; }
+        .btn-copy { background: #3b82f6; color: white; width: 100%; padding: 0.6rem; border-radius: 0.375rem; font-weight: 600; font-size: 0.9rem; transition: 0.2s; cursor: pointer; border: none; }
+        .btn-copy:hover { background: #2563eb; }
+        .btn-copy:active { transform: translateY(1px); }
+
+        /* RWD */
+        .layout-grid { display: grid; grid-template-columns: 1fr; gap: 1.5rem; align-items: start; }
+        @media (min-width: 1280px) {
+            .layout-grid { grid-template-columns: 400px 1fr 350px; }
+        }
+    </style>
+</head>
+<body class="p-4 md:p-6 min-h-screen">
+
+    <header class="text-center mb-8">
+        <h1 class="text-2xl md:text-3xl font-bold text-blue-400 mb-2">FF14 快速鍵選單系統 <span class="text-lg font-normal text-gray-400 ml-2">by大鍋鍋</span></h1>
+        <p class="text-sm text-gray-400">邏輯修正：修復預覽程式碼消失與複製錯誤的問題</p>
+    </header>
+
+    <div class="layout-grid max-w-[1920px] mx-auto">
+        
+        <div class="space-y-6">
+            
+            <div class="panel border-l-4 border-blue-500">
+                <div class="panel-title">1. 定義共用欄位 (Targets)</div>
+                <p class="text-xs text-gray-400 mb-4">勾選幾個，下方就會自動產生幾行設定。</p>
+                <div class="cb-grid" id="shared-cb-container"></div>
+            </div>
+
+            <div class="panel border-l-4 border-orange-500">
+                <div class="panel-title">2. 倉庫與中樞 (Hub)</div>
+                <div class="mb-4">
+                    <label>倉庫職業</label>
+                    <select id="storageJob" onchange="updateAll()">
+                        <optgroup label="能工巧匠">
+                            <option value="LTW" selected>製革匠 (LTW)</option>
+                            <option value="CRP">刻木匠 (CRP)</option>
+                            <option value="BSM">鍛鐵匠 (BSM)</option>
+                            <option value="ARM">鑄甲匠 (ARM)</option>
+                            <option value="GSM">雕金匠 (GSM)</option>
+                            <option value="WVR">裁衣匠 (WVR)</option>
+                            <option value="ALC">鍊金術士 (ALC)</option>
+                            <option value="CUL">烹調師 (CUL)</option>
+                        </optgroup>
+                        <optgroup label="大地使者">
+                            <option value="MIN">採礦工 (MIN)</option>
+                            <option value="BTN">園藝工 (BTN)</option>
+                            <option value="FSH">捕魚人 (FSH)</option>
+                        </optgroup>
+                        <optgroup label="基礎/戰鬥職業">
+                             <option value="GLA">劍術師 (GLA)</option>
+                             <option value="ARC">弓箭手 (ARC)</option>
+                             <option value="MRD">斧術師 (MRD)</option>
+                        </optgroup>
+                    </select>
+                </div>
+
+                <div class="bg-slate-800 p-3 rounded mb-2 border border-slate-700">
+                    <label class="text-orange-300 font-bold mb-2">中樞位置 (Hub)</label>
+                    <div class="flex gap-2">
+                        <div class="flex-1">
+                            <label>倉庫欄位 (存放開啟鈕)</label>
+                            <select id="hubSource" onchange="onHubChange()"></select>
+                        </div>
+                        <div class="w-20">
+                            <label>按鈕格數</label>
+                            <input type="number" id="triggerSlot" value="1" min="1" max="12" onchange="updateAll()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel border-l-4 border-green-500">
+                <div class="panel-title">3. 選單內容對應 (Spokes)</div>
+                <p class="text-xs text-gray-400 mb-4">設定每一排共用欄位的開啟來源與還原目標。</p>
+                
+                <div id="dynamic-rows-container"></div>
+
+                <div class="flex items-center gap-3 bg-slate-800 p-2 rounded mt-4">
+                    <input type="checkbox" id="autoClose" class="w-4 h-4" checked onchange="updateAll()">
+                    <label for="autoClose" class="!mb-0 cursor-pointer">啟用自動關閉</label>
+                    <input type="number" id="waitSec" value="8" class="w-16 !p-1 text-center" onchange="updateAll()">
+                    <span class="text-xs">秒</span>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="space-y-6">
+            <div class="panel h-full">
+                <div class="panel-title">
+                    <span>視覺化檢視</span>
+                    <span class="text-xs font-normal text-gray-400">Warehouse & Live View</span>
+                </div>
+
+                <div class="mb-8">
+                    <h3 class="text-sm font-bold text-orange-400 mb-2">🏭 倉庫狀態 (Storage)</h3>
+                    <p class="text-xs text-gray-500 mb-4">注意：只有第一列的來源欄位需要設定紅色關閉按鈕。</p>
+                    <div id="warehouse-view"></div>
+                </div>
+
+                <div class="flex justify-center mb-8 text-2xl text-gray-600 animate-pulse">⬇️ 邏輯映射 ⬇️</div>
+
+                <div>
+                    <h3 class="text-sm font-bold text-blue-400 mb-2">🖥️ 遊戲畫面模擬 (Live)</h3>
+                    <p class="text-xs text-gray-500 mb-4">共用欄位實際畫面。</p>
+                    <div id="live-view"></div>
+                    <div class="flex items-center justify-center gap-2 mt-2">
+                        <span class="text-xs text-green-500 font-bold px-2 py-1 bg-green-900/30 rounded" id="sim-status">狀態：關閉 (已還原)</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="space-y-6">
+            <div class="panel">
+                <div class="panel-title">巨集生成結果</div>
+                
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="text-green-400 font-bold !mb-0">🟢 開啟選單</label>
+                        <span class="text-xs text-gray-500 bg-slate-900 px-2 py-1 rounded border border-slate-700">放在: <span id="loc-open">Checking...</span></span>
+                    </div>
+                    <textarea id="code-open" class="macro" readonly></textarea>
+                    <button class="btn-copy" onclick="copyTo('code-open')">複製開啟巨集</button>
+                </div>
+
+                <div>
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="text-red-400 font-bold !mb-0">🔴 關閉選單</label>
+                        <span class="text-xs text-gray-500 bg-slate-900 px-2 py-1 rounded border border-slate-700">放在: <span id="loc-close">Checking...</span></span>
+                    </div>
+                    <textarea id="code-close" class="macro" readonly></textarea>
+                    <button class="btn-copy" onclick="copyTo('code-close')">複製關閉巨集</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Data & State
+        let sharedBars = [4, 5]; 
+        let isMenuOpen = false;
+
+        // 全職業列表字串 (包含完整中文)
+        const jobOptionsHtml = `
+            <optgroup label="常用/生產採集">
+                <option value="LTW">製革匠 (LTW)</option>
+                <option value="CRP">刻木匠 (CRP)</option>
+                <option value="BSM">鍛鐵匠 (BSM)</option>
+                <option value="ARM">鑄甲匠 (ARM)</option>
+                <option value="GSM">雕金匠 (GSM)</option>
+                <option value="WVR">裁衣匠 (WVR)</option>
+                <option value="ALC">鍊金術士 (ALC)</option>
+                <option value="CUL">烹調師 (CUL)</option>
+                <option value="MIN">採礦工 (MIN)</option>
+                <option value="BTN">園藝工 (BTN)</option>
+                <option value="FSH">捕魚人 (FSH)</option>
+            </optgroup>
+            <optgroup label="防護職業 (Tank)">
+                <option value="PLD">騎士 (PLD)</option>
+                <option value="WAR">戰士 (WAR)</option>
+                <option value="DRK">暗黑騎士 (DRK)</option>
+                <option value="GNB">絕槍戰士 (GNB)</option>
+            </optgroup>
+            <optgroup label="治療職業 (Healer)">
+                <option value="WHM">白魔法師 (WHM)</option>
+                <option value="SCH">學者 (SCH)</option>
+                <option value="AST">占星術士 (AST)</option>
+                <option value="SGE">賢者 (SGE)</option>
+            </optgroup>
+            <optgroup label="近戰攻擊 (Melee)">
+                <option value="MNK">武僧 (MNK)</option>
+                <option value="DRG">龍騎士 (DRG)</option>
+                <option value="NIN">忍者 (NIN)</option>
+                <option value="SAM">武士 (SAM)</option>
+                <option value="RPR">鎌刀手 (RPR)</option>
+                <option value="VPR">蛇武 (VPR)</option>
+            </optgroup>
+            <optgroup label="遠程/法系 (Ranged/Magic)">
+                <option value="BRD">吟遊詩人 (BRD)</option>
+                <option value="MCH">機工士 (MCH)</option>
+                <option value="DNC">舞者 (DNC)</option>
+                <option value="BLM">黑魔法師 (BLM)</option>
+                <option value="SMN">召喚師 (SMN)</option>
+                <option value="RDM">赤魔法師 (RDM)</option>
+                <option value="PCT">繪靈法師 (PCT)</option>
+                <option value="BLU">青魔法師 (BLU)</option>
+            </optgroup>
+            <optgroup label="基礎職業 (Base)">
+                <option value="GLA">劍術師 (GLA)</option> <option value="MRD">斧術師 (MRD)</option> 
+                <option value="ARC">弓箭手 (ARC)</option> <option value="LNC">槍術師 (LNC)</option>
+                <option value="ROG">雙劍師 (ROG)</option> <option value="PGL">格鬥家 (PGL)</option>
+                <option value="THM">咒術師 (THM)</option> <option value="ACN">秘術師 (ACN)</option>
+                <option value="CNJ">幻術師 (CNJ)</option>
+            </optgroup>
+        `;
+
+        function init() {
+            renderCheckboxes();
+            updateHubOptions();
+            generateRows(); 
+            updateAll();
+        }
+
+        // 1. Checkboxes
+        function renderCheckboxes() {
+            const container = document.getElementById('shared-cb-container');
+            container.innerHTML = '';
+            for (let i = 1; i <= 10; i++) {
+                const div = document.createElement('div');
+                div.className = `cb-item ${sharedBars.includes(i) ? 'active' : ''}`;
+                div.innerText = `快速鍵 ${i}`;
+                div.onclick = () => toggleShared(i);
+                container.appendChild(div);
+            }
+        }
+
+        function toggleShared(num) {
+            if (sharedBars.includes(num)) {
+                sharedBars = sharedBars.filter(n => n !== num);
+            } else {
+                sharedBars.push(num);
+            }
+            sharedBars.sort((a,b) => a-b);
+            renderCheckboxes();
+            updateHubOptions(); 
+            generateRows(); 
+            updateAll();
+        }
+
+        // 2. Hub Logic
+        function updateHubOptions() {
+            const allBars = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            const availableSources = allBars.filter(b => !sharedBars.includes(b));
+            
+            const hubSelect = document.getElementById('hubSource');
+            const currentHub = parseInt(hubSelect.value);
+            
+            hubSelect.innerHTML = '';
+            availableSources.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b;
+                opt.text = `快速鍵 ${b}`;
+                hubSelect.appendChild(opt);
+            });
+
+            if(availableSources.includes(currentHub)) {
+                hubSelect.value = currentHub;
+            } else if(availableSources.length > 0) {
+                hubSelect.value = availableSources[0];
+            }
+        }
+
+        function onHubChange() {
+            updateRowOptions(); 
+            updateAll();
+        }
+
+        // 3. Dynamic Rows
+        function generateRows() {
+            const container = document.getElementById('dynamic-rows-container');
+            const currentValues = {}; 
+            container.querySelectorAll('.spoke-card').forEach(card => {
+                const target = card.dataset.target;
+                currentValues[target] = {
+                    source: card.querySelector('.row-source').value,
+                    resetJob: card.querySelector('.row-reset-job').value,
+                    resetBar: card.querySelector('.row-reset-bar').value
+                };
+            });
+
+            container.innerHTML = '';
+
+            if(sharedBars.length === 0) {
+                container.innerHTML = '<div class="text-sm text-gray-500 text-center py-4">請在上方勾選至少一個共用欄位</div>';
+                return;
+            }
+
+            sharedBars.forEach((target, idx) => {
+                const card = document.createElement('div');
+                card.className = 'spoke-card';
+                card.dataset.target = target;
+                card.dataset.idx = idx; 
+
+                let defResetJob = (idx === 0) ? document.getElementById('storageJob').value : 'CRP';
+                let defResetBar = (idx === 0) ? (document.getElementById('hubSource').value || 3) : 1;
+
+                if(currentValues[target]) {
+                    defResetJob = currentValues[target].resetJob;
+                    defResetBar = currentValues[target].resetBar;
+                }
+
+                let barOpts = '';
+                for(let b=1; b<=10; b++) {
+                    barOpts += `<option value="${b}" ${parseInt(b) === parseInt(defResetBar) ? 'selected' : ''}>快速鍵 ${b}</option>`;
+                }
+
+                let hintHtml = '';
+                if(idx === 0) {
+                    hintHtml = `
+                        <div class="mt-2 p-2 bg-green-900/30 border border-green-800 rounded text-xs text-green-300">
+                            💡 <strong>建議：</strong>將此還原為 <strong>[${document.getElementById('storageJob').value}]</strong> 的 <strong>[快速鍵 ${document.getElementById('hubSource').value || '?'}]</strong>。<br>
+                            這樣關閉後，按鈕才會變回「開啟選單」。
+                        </div>
+                    `;
+                }
+
+                card.innerHTML = `
+                    <div class="spoke-label">對應共用欄位 (Share ${target})</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                        <div>
+                            <label class="text-blue-300 font-bold">開啟時顯示內容</label>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-500 whitespace-nowrap">來自倉庫</span>
+                                <select class="row-source" onchange="updateAll()"></select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-red-300 font-bold">關閉時還原成你要的欄位</label>
+                            <div class="flex gap-2">
+                                <select class="row-reset-job w-1/3" onchange="updateAll()">
+                                    ${jobOptionsHtml}
+                                </select>
+                                <select class="row-reset-bar flex-1" onchange="updateAll()">
+                                    ${barOpts}
+                                </select>
+                            </div>
+                            ${hintHtml}
+                        </div>
+                    </div>
+                `;
+                
+                card.querySelector('.row-reset-job').value = defResetJob;
+                container.appendChild(card);
+            });
+
+            updateRowOptions(currentValues);
+        }
+
+        function updateRowOptions(savedValues = {}) {
+            const hubBar = parseInt(document.getElementById('hubSource').value);
+            const allBars = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            const availableSources = allBars.filter(b => !sharedBars.includes(b) && b !== hubBar);
+
+            const cards = document.querySelectorAll('.spoke-card');
+            let sourceIndexCounter = 0;
+
+            cards.forEach(card => {
+                const select = card.querySelector('.row-source');
+                const target = card.dataset.target;
+                const savedVal = savedValues[target] ? parseInt(savedValues[target].source) : null;
+
+                select.innerHTML = '';
+                availableSources.forEach(b => {
+                    const opt = document.createElement('option');
+                    opt.value = b;
+                    opt.text = `快速鍵 ${b}`;
+                    select.appendChild(opt);
+                });
+
+                if(savedVal && availableSources.includes(savedVal)) {
+                    select.value = savedVal;
+                } else if (availableSources.length > 0) {
+                    select.value = availableSources[sourceIndexCounter % availableSources.length];
+                }
+                sourceIndexCounter++;
+            });
+        }
+
+        // 4. Update
+        function updateAll() {
+            updateVisuals();
+            updateCode(); // 這之前不會再崩潰了
+        }
+
+        function getRowsData() {
+            const rows = [];
+            document.querySelectorAll('.spoke-card').forEach(card => {
+                rows.push({
+                    target: parseInt(card.dataset.target),
+                    source: parseInt(card.querySelector('.row-source').value),
+                    resetJob: card.querySelector('.row-reset-job').value,
+                    resetBar: parseInt(card.querySelector('.row-reset-bar').value),
+                    isFirst: (parseInt(card.dataset.idx) === 0) 
+                });
+            });
+            return rows;
+        }
+
+        function renderGrid(type, slotNum = null, isFirstRow = true) {
+            let html = `<div class="slots-grid">`;
+            for(let i=1; i<=12; i++) {
+                let classes = "slot";
+                let content = "";
+                let onClick = "";
+
+                if (type === 'hub') {
+                    if (i === slotNum) { classes += " trigger"; content = "OPEN"; }
+                    else classes += " occupied";
+                } 
+                else if (type === 'source') {
+                    if (isFirstRow && i === slotNum) { 
+                        classes += " close"; content = "CLOSE"; 
+                    } else { 
+                        classes += " content"; 
+                    }
+                } 
+                else if (type === 'live-open') {
+                    onClick = `onclick="toggleSim()"`;
+                    if (isFirstRow && i === slotNum) { 
+                        classes += " close"; content = "CLOSE"; 
+                    } else { 
+                        classes += " content"; 
+                    }
+                }
+                else if (type === 'live-closed') {
+                    onClick = `onclick="toggleSim()"`;
+                    if(isFirstRow && i === slotNum) { 
+                         classes += " trigger"; content = "OPEN";
+                    } else {
+                         classes += " reset";
+                    }
+                }
+
+                html += `<div class="${classes}" ${onClick}><span style="position:absolute; top:1px; left:2px; font-size:8px; opacity:0.5;">${i}</span>${content}</div>`;
+            }
+            html += `</div>`;
+            return html;
+        }
+
+        function updateVisuals() {
+            const storageJob = document.getElementById('storageJob').value;
+            const hubBar = parseInt(document.getElementById('hubSource').value);
+            const triggerSlot = parseInt(document.getElementById('triggerSlot').value);
+            const rows = getRowsData();
+
+            // Warehouse
+            const whContainer = document.getElementById('warehouse-view');
+            let whHtml = '';
+            
+            whHtml += `<div class="bar-container">
+                        <div class="bar-label"><span>${storageJob} ${hubBar} (Hub)</span><span>中樞</span></div>
+                        ${renderGrid('hub', triggerSlot)}
+                       </div>`;
+
+            rows.forEach(r => {
+                const labelType = r.isFirst ? "內容+關閉鈕" : "僅內容";
+                whHtml += `<div class="bar-container">
+                            <div class="bar-label"><span>${storageJob} ${r.source} (用於 Share ${r.target})</span><span>${labelType}</span></div>
+                            ${renderGrid('source', triggerSlot, r.isFirst)}
+                           </div>`;
+            });
+            whContainer.innerHTML = whHtml;
+
+            // Live
+            const liveContainer = document.getElementById('live-view');
+            let liveHtml = '';
+
+            rows.forEach(r => {
+                let gridHtml = '';
+                let label = '';
+                
+                if (isMenuOpen) {
+                    label = `<span class="text-blue-300">Share ${r.target} (展開: ${storageJob} ${r.source})</span>`;
+                    gridHtml = renderGrid('live-open', triggerSlot, r.isFirst);
+                } else {
+                    label = `<span class="text-red-300">Share ${r.target} (還原: ${r.resetJob} ${r.resetBar})</span>`;
+                    const resetsToHub = (r.resetJob === storageJob && r.resetBar === hubBar);
+                    
+                    gridHtml = `<div class="slots-grid">`;
+                    for(let i=1; i<=12; i++) {
+                        let cls = "slot";
+                        let txt = "";
+                        if(resetsToHub && i === triggerSlot) {
+                            cls += " trigger"; txt = "OPEN";
+                        } else {
+                            cls += " reset";
+                        }
+                        gridHtml += `<div class="${cls}" onclick="toggleSim()">${txt}</div>`;
+                    }
+                    gridHtml += `</div>`;
+                }
+                liveHtml += `<div class="bar-container"><div class="bar-label">${label}</div>${gridHtml}</div>`;
+            });
+
+            liveContainer.innerHTML = liveHtml;
+            document.getElementById('sim-status').innerText = isMenuOpen ? "狀態：開啟 (展開中)" : "狀態：關閉 (已還原)";
+            document.getElementById('sim-status').className = isMenuOpen ? "text-xs text-blue-500 font-bold px-2 py-1 bg-blue-900/30 rounded" : "text-xs text-green-500 font-bold px-2 py-1 bg-green-900/30 rounded";
+
+            // Labels
+            // 修正：刪除導致錯誤的 lbl-job-storage 參考
+            const firstRow = rows[0];
+            if(firstRow) {
+                document.getElementById('loc-open').innerText = `${storageJob} ${hubBar} (格${triggerSlot})`;
+                document.getElementById('loc-close').innerText = `${storageJob} ${firstRow.source} (格${triggerSlot})`;
+            }
+        }
+
+        function toggleSim() {
+            isMenuOpen = !isMenuOpen;
+            updateVisuals();
+        }
+
+        // 5. Code
+        function updateCode() {
+            const storageJob = document.getElementById('storageJob').value;
+            const rows = getRowsData();
+            const autoClose = document.getElementById('autoClose').checked;
+            const waitSec = document.getElementById('waitSec').value;
+
+            // Open Macro
+            let open = `/micon "Main Command"\n`;
+            rows.forEach(r => {
+                open += `/hotbar copy ${storageJob} ${r.source} share ${r.target}\n`;
+            });
+
+            if (autoClose) {
+                open += `/wait ${waitSec}\n`;
+                // 自動關閉的邏輯：執行一次還原操作
+                rows.forEach(r => {
+                    open += `/hotbar copy ${r.resetJob} ${r.resetBar} share ${r.target}\n`;
+                });
+            }
+
+            // Close Macro
+            let close = `/micon "Return"\n`;
+            rows.forEach(r => {
+                close += `/hotbar copy ${r.resetJob} ${r.resetBar} share ${r.target}\n`;
+            });
+
+            // Set Values
+            document.getElementById('code-open').value = open;
+            document.getElementById('code-close').value = close;
+        }
+
+        function copyTo(id) {
+            const el = document.getElementById(id);
+            if(!el) return;
+            el.select();
+            navigator.clipboard.writeText(el.value).then(() => {
+                alert("已複製到剪貼簿！");
+            }).catch(err => {
+                console.error("複製失敗", err);
+                alert("複製失敗，請手動複製。");
+            });
+        }
+
+        // Init
+        init();
+    </script>
+</body>
+</html>
